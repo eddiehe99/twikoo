@@ -26,6 +26,7 @@ import {
   getAvatar,
   isQQ,
   addQQMailSuffix,
+  getQQNick,
   getQQAvatar,
   getPasswordStatus,
   preCheckSpam,
@@ -1050,6 +1051,20 @@ export async function onRequest (context) {
   })
 }
 
+async function qqNickGet (event) {
+  const res = {}
+  try {
+    validate(event, ['qq'])
+    const nick = await getQQNick(event.qq, config.QQ_API_KEY)
+    res.code = RES_CODE.SUCCESS
+    res.nick = nick
+  } catch (e) {
+    res.code = RES_CODE.FAIL
+    res.message = e.message
+  }
+  return res
+}
+
 // POST 请求处理主逻辑
 async function handlePost (req, res) {
   let accessToken
@@ -1135,6 +1150,9 @@ async function handlePost (req, res) {
         break
       case 'COMMENT_EXPORT_FOR_ADMIN':
         result = await commentExportForAdmin(event, db, accessToken)
+        break
+      case 'GET_QQ_NICK':
+        result = await qqNickGet(event)
         break
       default:
         if (event.event) {
