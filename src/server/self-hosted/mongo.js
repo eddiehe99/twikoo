@@ -36,7 +36,8 @@ const {
   checkCapCaptcha,
   getConfig,
   getConfigForAdmin,
-  validate
+  validate,
+  checkCommentOwnership
 } = require('twikoo-func/utils')
 const {
   jsonParse,
@@ -98,6 +99,9 @@ module.exports = async (request, response) => {
         break
       case 'COMMENT_DELETE_FOR_ADMIN':
         res = await commentDeleteForAdmin(event)
+        break
+      case 'COMMENT_DELETE_FOR_USER':
+        res = await commentDeleteForUser(event)
         break
       case 'COMMENT_IMPORT_FOR_ADMIN':
         res = await commentImportForAdmin(event)
@@ -456,6 +460,24 @@ async function commentDeleteForAdmin (event) {
   } else {
     res.code = RES_CODE.NEED_LOGIN
     res.message = '请先登录'
+  }
+  return res
+}
+
+// 用户删除自己的评论
+async function commentDeleteForUser (event) {
+  const res = {}
+  try {
+    const uid = event.accessToken
+    await checkCommentOwnership(event.id, uid, async (id) => {
+      return db.collection('comment').findOne({ _id: id })
+    })
+    const data = await db.collection('comment').deleteOne({ _id: event.id })
+    res.code = RES_CODE.SUCCESS
+    res.deleted = data.deletedCount
+  } catch (e) {
+    res.code = RES_CODE.FAIL
+    res.message = e.message
   }
   return res
 }

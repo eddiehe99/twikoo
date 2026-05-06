@@ -35,7 +35,8 @@ import {
   checkCapCaptcha,
   getConfig,
   getConfigForAdmin,
-  validate
+  validate,
+  checkCommentOwnership
 } from 'twikoo-func/utils'
 import {
   jsonParse,
@@ -558,6 +559,24 @@ async function commentDeleteForAdmin (event, db, accessToken) {
   } else {
     res.code = RES_CODE.NEED_LOGIN
     res.message = '请先登录'
+  }
+  return res
+}
+
+// 用户删除自己的评论
+async function commentDeleteForUser (event, db, accessToken) {
+  const res = {}
+  try {
+    const uid = accessToken
+    await checkCommentOwnership(event.id, uid, async (id) => {
+      return db.getComment(id)
+    })
+    await db.deleteComment(event.id)
+    res.code = RES_CODE.SUCCESS
+    res.deleted = 1
+  } catch (e) {
+    res.code = RES_CODE.FAIL
+    res.message = e.message
   }
   return res
 }
@@ -1105,6 +1124,9 @@ async function handlePost (req, res) {
         break
       case 'COMMENT_DELETE_FOR_ADMIN':
         result = await commentDeleteForAdmin(event, db, accessToken)
+        break
+      case 'COMMENT_DELETE_FOR_USER':
+        result = await commentDeleteForUser(event, db, accessToken)
         break
       case 'COMMENT_IMPORT_FOR_ADMIN':
         result = await commentImportForAdmin(event, db, accessToken)

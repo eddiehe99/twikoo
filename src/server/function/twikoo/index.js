@@ -34,7 +34,8 @@ const {
   checkCapCaptcha,
   getConfig,
   getConfigForAdmin,
-  validate
+  validate,
+  checkCommentOwnership
 } = require('./utils')
 const {
   jsonParse,
@@ -145,6 +146,9 @@ exports.main = async (event, context) => {
         break
       case 'COMMENT_EXPORT_FOR_ADMIN': // >= 1.6.13
         res = await commentExportForAdmin(event)
+        break
+      case 'COMMENT_DELETE_FOR_USER':
+        res = await commentDeleteForUser(event)
         break
       default:
         if (event.event) {
@@ -424,6 +428,25 @@ async function commentDeleteForAdmin (event) {
   } else {
     res.code = RES_CODE.NEED_LOGIN
     res.message = '请先登录'
+  }
+  return res
+}
+
+// 用户删除自己的评论
+async function commentDeleteForUser (event) {
+  const res = {}
+  try {
+    const uid = await getUid()
+    await checkCommentOwnership(event.id, uid, async (id) => {
+      const doc = await db.collection('comment').doc(id).get()
+      return doc.data && doc.data.length > 0 ? doc.data[0] : null
+    })
+    const data = await db.collection('comment').doc(event.id).delete()
+    res.code = RES_CODE.SUCCESS
+    res.deleted = data.deleted
+  } catch (e) {
+    res.code = RES_CODE.FAIL
+    res.message = e.message
   }
   return res
 }
