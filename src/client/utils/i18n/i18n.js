@@ -668,15 +668,15 @@ export default {
     'Sembunyikan tombol panel manajemen. Atur kata sandi, hanya ketika kata sandi yang sama dimasukkan di kolom nama, tombol akan muncul. Kosongkan untuk tidak menyembunyikan.'
   ],
   [S.ACI + '_QQ_API_KEY']: [
-    'QQ昵称API密钥，用于获取QQ昵称。前往 https://api.nsuuu.com/admin/key 获取',
-    'QQ暱稱API密鑰，用於獲取QQ暱稱。前往 https://api.nsuuu.com/admin/key 獲取',
-    'QQ暱稱API密鑰，用於獲取QQ暱稱。前往 https://api.nsuuu.com/admin/key 獲取',
+    'QQ昵称API密钥，用于获取QQ昵称。前往 https://api.tqq.me/dashboard/api-keys 获取',
+    'QQ暱稱API密鑰，用於獲取QQ暱稱。前往 https://api.tqq.me/dashboard/api-keys 獲取',
+    'QQ暱稱API密鑰，用於獲取QQ暱稱。前往 https://api.tqq.me/dashboard/api-keys 獲取',
     'QQ nickname API key for fetching QQ nickname. Get it from https://api.nsuuu.com/admin/key',
-    'QQ laqab API kaliti, QQ laqabni olish uchun. https://api.nsuuu.com/admin/key dan oling',
-    'QQニックネームAPIキー。QQニックネームの取得に使用します。https://api.nsuuu.com/admin/key で取得',
-    'QQ 닉네임 API 키. https://api.nsuuu.com/admin/key 에서 발급',
-    'API key lấy biệt danh QQ. Lấy tại https://api.nsuuu.com/admin/key',
-    'Kunci API nama panggilan QQ. Dapatkan dari https://api.nsuuu.com/admin/key'
+    'QQ laqab API kaliti, QQ laqabni olish uchun. https://api.tqq.me/dashboard/api-keys dan oling',
+    'QQニックネームAPIキー。QQニックネームの取得に使用します。https://api.tqq.me/dashboard/api-keys で取得',
+    'QQ 닉네임 API 키. https://api.tqq.me/dashboard/api-keys 에서 발급',
+    'API key lấy biệt danh QQ. Lấy tại https://api.tqq.me/dashboard/api-keys',
+    'Kunci API nama panggilan QQ. Dapatkan dari https://api.tqq.me/dashboard/api-keys'
   ],
   [S.ACI + '_HIGHLIGHT']: [
     '启用代码高亮功能。如果您的主题和代码高亮有冲突，请设为 false。默认：true',
@@ -746,15 +746,15 @@ export default {
     'Token hosting gambar. Tidak diperlukan untuk qcloud.'
   ],
   [S.ACI + '_NSFW_API_URL']: [
-    'NSFW 图片检测 API 地址。免费服务：nsfw.xnet.ren、nsfw.qixz.cn，项目：github.com/HG-ha/nsfwpy',
-    'NSFW 圖片檢測 API 地址。免費服務：nsfw.xnet.ren、nsfw.qixz.cn，項目：github.com/HG-ha/nsfwpy',
-    'NSFW 圖片檢測 API 地址。免費服務：nsfw.xnet.ren、nsfw.qixz.cn，項目：github.com/HG-ha/nsfwpy',
-    'NSFW image detection API URL. Free services: nsfw.xnet.ren, nsfw.qixz.cn, project: github.com/HG-ha/nsfwpy',
-    'NSFW расмни аниқлаш API URL. Бепул хизматлар: nsfw.xnet.ren, nsfw.qixz.cn, лойиҳа: github.com/HG-ha/nsfwpy',
-    'NSFW画像検出API URL。無料サービス：nsfw.xnet.ren、nsfw.qixz.cn、プロジェクト：github.com/HG-ha/nsfwpy',
-    'NSFW 이미지 감지 API URL. 무료 서비스: nsfw.xnet.ren, nsfw.qixz.cn, 프로젝트: github.com/HG-ha/nsfwpy',
-    'URL API phát hiện ảnh NSFW. Dịch vụ miễn phí: nsfw.xnet.ren, nsfw.qixz.cn, dự án: github.com/HG-ha/nsfwpy',
-    'URL API deteksi gambar NSFW. Layanan gratis: nsfw.xnet.ren, nsfw.qixz.cn, proyek: github.com/HG-ha/nsfwpy'
+    'NSFW 图片检测 API 地址。免费服务：nsfw.qixz.cn，项目：github.com/HG-ha/nsfwpy',
+    'NSFW 圖片檢測 API 地址。免費服務：nsfw.qixz.cn，項目：github.com/HG-ha/nsfwpy',
+    'NSFW 圖片檢測 API 地址。免費服務：nsfw.qixz.cn，項目：github.com/HG-ha/nsfwpy',
+    'NSFW image detection API URL. Free services: nsfw.qixz.cn, project: github.com/HG-ha/nsfwpy',
+    'NSFW расмни аниқлаш API URL. Бепул хизматлар: nsfw.qixz.cn, лойиҳа: github.com/HG-ha/nsfwpy',
+    'NSFW画像検出API URL。無料サービス：nsfw.qixz.cn、プロジェクト：github.com/HG-ha/nsfwpy',
+    'NSFW 이미지 감지 API URL. 무료 서비스: nsfw.qixz.cn, 프로젝트: github.com/HG-ha/nsfwpy',
+    'URL API phát hiện ảnh NSFW. Dịch vụ miễn phí: nsfw.qixz.cn, dự án: github.com/HG-ha/nsfwpy',
+    'URL API deteksi gambar NSFW. Layanan gratis: nsfw.qixz.cn, proyek: github.com/HG-ha/nsfwpy'
   ],
   [S.ACI + '_NSFW_THRESHOLD']: [
     'NSFW 检测阈值（0-1），当检测分数高于此值时拒绝上传。默认：0.5',
@@ -1019,26 +1019,26 @@ export default {
     'Kunci GeeTest CAPTCHA'
   ],
   [S.ACI + '_CAP_API_ENDPOINT']: [
-    'Cap 验证码 API 端点（格式：https://<实例地址>/<site_key>/）',
-    'Cap 验证码 API 端点（格式：https://<实例地址>/<site_key>/）',
-    'Cap 验证码 API 端点（格式：https://<实例地址>/<site_key>/）',
-    'Cap CAPTCHA API Endpoint (format: https://<instance_url>/<site_key>/)',
-    'Cap CAPTCHA API Endpoint (format: https://<instance_url>/<site_key>/)',
-    'Cap CAPTCHA API Endpoint (format: https://<instance_url>/<site_key>/)',
-    'Cap CAPTCHA API Endpoint (format: https://<instance_url>/<site_key>/)',
-    'Cap CAPTCHA API Endpoint (định dạng: https://<instance_url>/<site_key>/)',
-    'Endpoint API Cap CAPTCHA (format: https://<alamat_instansi>/<site_key>/)'
+    'Cap 验证码 API 端点。留空则使用内嵌 Cap（无需额外部署）；外部 Standalone 格式：https://<实例地址>/<site_key>/',
+    'Cap 验证码 API 端点。留空则使用内嵌 Cap（无需额外部署）；外部 Standalone 格式：https://<实例地址>/<site_key>/',
+    'Cap 验证码 API 端点。留空则使用内嵌 Cap（无需额外部署）；外部 Standalone 格式：https://<实例地址>/<site_key>/',
+    'Cap CAPTCHA API endpoint. Leave empty for built-in Cap (no extra server). External Standalone format: https://<instance_url>/<site_key>/',
+    'Cap CAPTCHA API endpoint. Leave empty for built-in Cap (no extra server). External Standalone format: https://<instance_url>/<site_key>/',
+    'Cap CAPTCHA API Endpoint。空欄で内蔵 Cap を使用（追加サーバー不要）。外部 Standalone 形式: https://<instance_url>/<site_key>/',
+    'Cap CAPTCHA API Endpoint. 비우면 내장 Cap 사용(추가 서버 불필요). 외부 Standalone 형식: https://<instance_url>/<site_key>/',
+    'Endpoint API Cap CAPTCHA. Để trống = Cap tích hợp (không cần server ngoài). Standalone ngoài: https://<instance_url>/<site_key>/',
+    'Endpoint API Cap CAPTCHA. Kosongkan = Cap bawaan (tanpa server ekstra). Standalone eksternal: https://<instance_url>/<site_key>/'
   ],
   [S.ACI + '_CAP_SECRET_KEY']: [
-    'Cap 验证码的 Secret Key',
-    'Cap 验证码的 Secret Key',
-    'Cap 验证码的 Secret Key',
-    'Cap CAPTCHA Secret Key',
-    'Cap CAPTCHA Secret Key',
-    'Cap CAPTCHA Secret Key',
-    'Cap CAPTCHA Secret Key',
-    'Cap CAPTCHA Secret Key',
-    'Kunci Rahasia CAPTCHA Cap'
+    'Cap Secret Key（仅外部 Standalone 需要；内嵌模式可留空）',
+    'Cap Secret Key（僅外部 Standalone 需要；內嵌模式可留空）',
+    'Cap Secret Key（僅外部 Standalone 需要；內嵌模式可留空）',
+    'Cap Secret Key (external Standalone only; leave empty for built-in)',
+    'Cap Secret Key (external Standalone only; leave empty for built-in)',
+    'Cap Secret Key（外部 Standalone のみ。内蔵時は空欄可）',
+    'Cap Secret Key (외부 Standalone 전용; 내장 모드는 비워둠)',
+    'Cap Secret Key (chỉ Standalone ngoài; để trống nếu dùng tích hợp)',
+    'Cap Secret Key (hanya Standalone eksternal; kosongkan untuk bawaan)'
   ],
   [S.ACI + '_QCLOUD_SECRET_ID']: [
     '腾讯云 secret id，用于垃圾评论检测。同时设置腾讯云和 Akismet 时，只有腾讯云会生效。注册：https://twikoo.js.org/cms.html',
@@ -1875,7 +1875,7 @@ export default {
     'コメントはありません',
     '아직 댓글이 없습니다.',
     'Chưa có bình luận',
-    'Tidak ada komentar'
+    'Berikan pendapatmu'
   ],
   COMMENT_EXPAND: [
     '展开',
@@ -1930,7 +1930,7 @@ export default {
     'あなたのコメントを削除しますか？',
     '댓글을 삭제하시겠습니까?',
     'Xóa bình luận của bạn?',
-    'Hapus komentar Anda?'
+    'Hapus pendapat Anda?'
   ],
   COMMENT_REVIEWING_TAG: [
     '审核中',
