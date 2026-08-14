@@ -869,9 +869,9 @@
     "@cloudbase/utilities" "4.0.0"
 
 "@cloudbase/cli@^3.3.0":
-  version "3.7.0"
-  resolved "https://registry.yarnpkg.com/@cloudbase/cli/-/cli-3.7.0.tgz#33fcb70db9f1c4da7d667e70d5728fd11aa60dda"
-  integrity sha512-RvClk8kG0aoUgrplyDto/gpKP5Q2z8Yw15Y9niRwU5/DY7R8ZijERtg52YW/zJjO6M4jlRozYXYNBLRe2Q1DRg==
+  version "3.7.2"
+  resolved "https://registry.yarnpkg.com/@cloudbase/cli/-/cli-3.7.2.tgz#474f54a911e8dd197183874cc954fb0d0ce36576"
+  integrity sha512-iXg0e7AL1BRW1LvunvobcX05e4yszJwA4Mw7Q6+bJxN0ERUZE+XFBjF52FkaR+LxVNLcfv3fvVnIsWgM/H+pTQ==
 
 "@cloudbase/cloudrun@4.0.0":
   version "4.0.0"
@@ -3681,9 +3681,9 @@ js-tokens@^10.0.0:
   integrity sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==
 
 js-yaml@^4.1.1:
-  version "4.3.0"
-  resolved "https://registry.yarnpkg.com/js-yaml/-/js-yaml-4.3.0.tgz#d1900572a7f7cf0b5f540c83673e60bad3436592"
-  integrity sha512-1td788aAnnZ5qs7V2QIRl1owjtYpbKt749Y3xauqQgwIIGF/xXWz1wMTEBx5O3LK3lXLVuqXPdPxj2BoFHaW9Q==
+  version "4.3.1"
+  resolved "https://registry.yarnpkg.com/js-yaml/-/js-yaml-4.3.1.tgz#01216c001d67f48e2cd560d708c7af21090a3848"
+  integrity sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==
   dependencies:
     argparse "^2.0.1"
 
@@ -3833,9 +3833,9 @@ lru-cache@^4.1.2:
     yallist "^2.1.2"
 
 marked@^18.0.4:
-  version "18.0.7"
-  resolved "https://registry.yarnpkg.com/marked/-/marked-18.0.7.tgz#6d8d4dd777730263e7e25bedad56a26bb2809232"
-  integrity sha512-iDVQ5ldaiKXn6b2JroX5kgRfmwgqolW7NpaEzTl1k/2Zh1njIEN9yniyLV/mOvWwtsE8OGgkjsCYvijuPk1dtA==
+  version "18.0.9"
+  resolved "https://registry.yarnpkg.com/marked/-/marked-18.0.9.tgz#729fb57203a4fd58dd5ddc551917ef40daf5036a"
+  integrity sha512-/Sa4qiiHZxf0/FQdBBowr9q4r10krCwMvpK48FUBdXdUXScDxiQGR9zCPrFgRVR5LU3iySOiIjy09ZQvADir1w==
 
 math-intrinsics@^1.1.0:
   version "1.1.0"
