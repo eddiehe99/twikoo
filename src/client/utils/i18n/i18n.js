@@ -127,7 +127,7 @@ const defaultGravatar = [
  *   'ja-JP'  // Contributor: [yumexupanic](https://github.com/yumexupanic), [HakoMC](https://github.com/HakoMC)
  *   'ko-KR'  // Contributor: [다배](https://github.com/tipsyoncola)
  *   'vi-VN'  // Contributor: (you!)
- *   'id-ID'  // Contributor: (Rijal)(https://github.com/frijal)
+ *   'id-ID'  // Contributor: [Rijal](https://github.com/frijal)
  * ]
  */
 export default {
@@ -1843,6 +1843,17 @@ export default {
     '댓글을 찾을 수 없습니다',
     'Không tìm thấy bình luận',
     'Tidak ada komentar ditemukan'
+  ],
+  COMMENTS_SEARCH_COUNT_PREFIX: [
+    '找到 ',
+    '找到 ',
+    '找到 ',
+    'Found ',
+    'Топилди: ',
+    '見つかった ',
+    '찾은 ',
+    'Tìm thấy ',
+    'Ditemukan '
   ],
   COMMENTS_COUNT_SUFFIX: [
     ' 条评论',
