@@ -99,7 +99,7 @@ const fn = {
       ruser: fn.ruser(comment.pid, comments),
       top: comment.top,
       isSpam: comment.isSpam,
-      isOwner: comment.uid === uid,
+      isOwner: Boolean(uid && comment.uid === uid),
       created: comment.created,
       updated: comment.updated
     }
@@ -474,7 +474,9 @@ const fn = {
     if (!comment) {
       throw new Error('评论不存在')
     }
-    if (comment.uid !== uid) {
+    // 无 token 的请求不具备任何归属权，必须直接拒绝，
+    // 防止 comment.uid 与 uid 同时为 undefined 时误判为本人
+    if (!uid || comment.uid !== uid) {
       throw new Error('只能删除自己的评论')
     }
     return comment

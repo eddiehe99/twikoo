@@ -78,6 +78,7 @@ let requestTimesTimer = null
 
 module.exports = async (request, response) => {
   let accessToken
+  let hasClientToken = false
   const event = request.body || {}
   logger.log('请求 IP：', getIp(request))
   logger.log('请求函数：', event.event)
@@ -85,6 +86,8 @@ module.exports = async (request, response) => {
   let res = {}
   try {
     protect(request)
+    // 判断客户端是否自带 accessToken，须在 anonymousSignIn 回填身份之前
+    hasClientToken = !!(request.body && request.body.accessToken)
     accessToken = anonymousSignIn(request)
     await connectToDatabase(process.env.MONGODB_URI || process.env.MONGO_URL)
     await readConfig()
@@ -180,7 +183,9 @@ module.exports = async (request, response) => {
     res.code = RES_CODE.FAIL
     res.message = e.message
   }
-  if (!res.code && !request.body.accessToken) {
+  // 客户端未携带 accessToken 时，将本次绑定的身份令牌随响应返回，
+  // 客户端会持久化并在后续请求中携带，从而获得稳定的匿名身份
+  if (!res.code && !hasClientToken) {
     res.accessToken = accessToken
   }
   logger.log('请求返回：', res)
@@ -226,7 +231,10 @@ function anonymousSignIn (request) {
     if (request.body.accessToken) {
       return request.body.accessToken
     } else {
-      return uuidv4().replace(/-/g, '')
+      // 为匿名访客签发固定身份令牌，写回请求体供本次请求的
+      // 评论存储（uid）与归属校验使用，避免出现 undefined 身份
+      request.body.accessToken = uuidv4().replace(/-/g, '')
+      return request.body.accessToken
     }
   }
 }
