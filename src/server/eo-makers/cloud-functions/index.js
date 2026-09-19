@@ -40,6 +40,7 @@ import {
   getConfig,
   getConfigForAdmin,
   validate,
+  validateClientFields,
   checkCommentOwnership,
   isValidEmail
 } from 'twikoo-func/utils'
@@ -68,7 +69,7 @@ const {
 
 const { RES_CODE, MAX_REQUEST_TIMES } = constants
 const htmlToText = getHtmlToText()
-const VERSION = '1.7.22'
+const VERSION = '1.7.24'
 const EO_SMTP_BRIDGE_PATH = '/smtp'
 const SMTP_BRIDGE_PROBE_TIMEOUT_MS = 5000
 
@@ -739,6 +740,7 @@ async function commentGet (event, db, accessToken) {
     if (getSearchKeyword(event)) return commentSearch(event, db, accessToken)
     const uid = accessToken
     const isAdminUser = isAdmin(accessToken)
+    const hideSpam = config.HIDE_SPAM === 'true'
     const limit = parseInt(config.COMMENT_PAGE_SIZE) || 8
     const sort = event.sort || 'newest'
     let more = false
@@ -752,7 +754,7 @@ async function commentGet (event, db, accessToken) {
     let mainComments = allComments.filter(c =>
       urlQuery.includes(c.url) &&
       (!c.rid || c.rid === '') &&
-      (c.isSpam !== true || c.uid === uid || isAdminUser)
+      (c.isSpam !== true || (!hideSpam && (c.uid === uid || isAdminUser)))
     )
 
     // 计算总数
@@ -796,7 +798,7 @@ async function commentGet (event, db, accessToken) {
     const mainIds = mainComments.map(c => c._id)
     const replies = allComments.filter(c =>
       mainIds.includes(c.rid) &&
-      (c.isSpam !== true || c.uid === uid || isAdminUser)
+      (c.isSpam !== true || (!hideSpam && (c.uid === uid || isAdminUser)))
     )
 
     res.data = parseComment([...mainComments, ...replies], uid, config)
@@ -817,13 +819,14 @@ async function commentSearch (event, db, accessToken) {
     const page = Math.max(parseInt(event.page) || 1, 1)
     const uid = accessToken
     const isAdminUser = isAdmin(accessToken)
+    const hideSpam = config.HIDE_SPAM === 'true'
     const limit = parseInt(config.COMMENT_PAGE_SIZE) || 8
     const sort = event.sort || 'newest'
     let more = false
 
     const urlQuery = getUrlQuery(event.url)
     const visible = (await db.getComments()).filter(c =>
-      urlQuery.includes(c.url) && (c.isSpam !== true || c.uid === uid || isAdminUser)
+      urlQuery.includes(c.url) && (c.isSpam !== true || (!hideSpam && (c.uid === uid || isAdminUser)))
     )
     const matchedRoots = keyword
       ? new Set(visible.filter(comment => commentMatchesKeyword(comment, keyword)).map(comment => String(comment.rid || comment._id)))
@@ -1497,6 +1500,9 @@ async function handlePost (req, res) {
   try {
     // 防护
     protect(ip)
+
+    // 统一校验客户端字段类型，防止查询操作符对象注入数据库查询条件
+    validateClientFields(event)
 
     // 生成或使用 accessToken
     accessToken = event.accessToken || uuidv4().replace(/-/g, '')

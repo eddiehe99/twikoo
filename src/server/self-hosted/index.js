@@ -40,6 +40,7 @@ const {
   getConfig,
   getConfigForAdmin,
   validate,
+  validateClientFields,
   checkCommentOwnership,
   isValidEmail
 } = require('twikoo-func/utils')
@@ -91,6 +92,8 @@ module.exports = async (request, response) => {
   let res = {}
   try {
     protect(request)
+    // 统一校验客户端字段类型，防止查询操作符对象注入数据库查询条件
+    validateClientFields(event)
     // 判断客户端是否自带 accessToken，须在 anonymousSignIn 回填身份之前
     hasClientToken = !!(request.body && request.body.accessToken)
     accessToken = anonymousSignIn(request)
@@ -334,7 +337,7 @@ async function commentGet (event) {
       url: { $in: getUrlQuery(event.url) },
       rid: { $exists: false }
     }
-    // 查询非垃圾评论 + 自己的评论
+    // 按当前用户和配置查询可见评论
     query = getCommentQuery({ condition, uid, isAdminUser })
     // 读取总条数
     const count = db
@@ -374,10 +377,7 @@ async function commentGet (event) {
     let top = []
     if (!config.TOP_DISABLED && !event.before) {
       // 查询置顶评论
-      query = {
-        ...condition,
-        top: true
-      }
+      query = getCommentQuery({ condition: { ...condition, top: true }, uid, isAdminUser })
       top = db
         .getCollection('comment')
         .chain()
@@ -467,6 +467,9 @@ async function commentSearch (event) {
 }
 
 function getCommentQuery ({ condition, uid, isAdminUser }) {
+  if (config.HIDE_SPAM === 'true') {
+    return { ...condition, isSpam: { $ne: true } }
+  }
   return {
     $or: [
       { ...condition, isSpam: { $ne: isAdminUser ? 'imaegoo' : true } },

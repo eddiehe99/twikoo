@@ -288,7 +288,7 @@ const fn = {
     }
   },
   // 预垃圾评论检测
-  preCheckSpam ({ comment, nick }, config) {
+  preCheckSpam ({ comment, nick, link, mail }, config) {
     // 长度限制
     let limitLength = parseInt(config.LIMIT_LENGTH)
     if (Number.isNaN(limitLength)) limitLength = 500
@@ -313,9 +313,11 @@ const fn = {
       // 违禁词检测
       const commentLowerCase = comment.toLowerCase()
       const nickLowerCase = nick.toLowerCase()
+      const linkLowerCase = (link || '').toLowerCase()
+      const mailLowerCase = (mail || '').toLowerCase()
       for (const forbiddenWord of config.FORBIDDEN_WORDS.replace(/,+$/, '').split(',')) {
         const forbiddenWordLowerCase = forbiddenWord.trim().toLowerCase()
-        if (commentLowerCase.indexOf(forbiddenWordLowerCase) !== -1 || nickLowerCase.indexOf(forbiddenWordLowerCase) !== -1) {
+        if (commentLowerCase.indexOf(forbiddenWordLowerCase) !== -1 || nickLowerCase.indexOf(forbiddenWordLowerCase) !== -1 || linkLowerCase.indexOf(forbiddenWordLowerCase) !== -1 || mailLowerCase.indexOf(forbiddenWordLowerCase) !== -1) {
           logger.warn('包含违禁词，直接标记为垃圾评论~')
           return true
         }
@@ -467,9 +469,33 @@ const fn = {
       }
     }
   },
+  // 客户端字段类型校验，防止 NoSQL 查询条件注入。
+  // 以下字段会直接参与数据库查询或作为评论归属标识，
+  // 如果传入对象，会被数据库解释为查询操作符（如 $ne、$gt），
+  // 导致越权删除评论、绕过评论可见性限制等问题。
+  // 允许字段缺省或为 null（兼容首次匿名请求），有值时必须是字符串。
+  validateClientFields (event = {}) {
+    const stringFields = ['accessToken', 'id', 'url', 'pid', 'rid']
+    for (const field of stringFields) {
+      const value = event[field]
+      if (value !== undefined && value !== null && typeof value !== 'string') {
+        throw new Error(`参数"${field}"必须是字符串`)
+      }
+    }
+    if (event.urls !== undefined && event.urls !== null) {
+      if (!Array.isArray(event.urls) || event.urls.some((url) => typeof url !== 'string')) {
+        throw new Error('参数"urls"必须是字符串数组')
+      }
+    }
+  },
   // 校验评论归属：确认评论存在且属于当前用户
   async checkCommentOwnership (id, uid, getComment) {
     fn.validate({ id }, ['id'])
+    // 兜底校验：id 必须是字符串，防止查询操作符对象注入 _id 条件，
+    // 绕过归属校验后批量删除评论
+    if (typeof id !== 'string') {
+      throw new Error('参数"id"必须是字符串')
+    }
     const comment = await getComment(id)
     if (!comment) {
       throw new Error('评论不存在')
