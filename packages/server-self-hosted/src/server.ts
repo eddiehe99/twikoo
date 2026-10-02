@@ -5,6 +5,7 @@
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
+import { BodyTooLargeError, readBodyWithLimit } from "@twikoojs/common";
 import {
   createTkserverHandler,
   getRequestTimesClearInterval,
@@ -19,6 +20,18 @@ type ServerResponseShim = import("./main").ServerResponseLike;
 
 /** 垫片中的请求形态（body 已解析挂载） */
 type ServerRequestShim = import("./main").ServerRequestLike & { body?: unknown };
+
+/** 健康检查路径（两个名字都收：编排系统常用 /healthz） */
+const HEALTH_PATHS = new Set(["/ping", "/healthz"]);
+
+/**
+ * 去掉 URL 的查询串（`/ping?x=1` 仍按 `/ping` 处理）。
+ * @param url Node 请求 URL（可能带 query 或为空）
+ * @returns 纯路径
+ */
+function stripQuery(url: string | undefined): string {
+  return (url ?? "/").split("?")[0];
+}
 
 /** 服务器实例与生命周期控制（createTkserverServer 产物） */
 export interface TkserverInstance {
@@ -50,12 +63,34 @@ export function createTkserverServer(options: { database?: Database } = {}): Tks
       res.end(JSON.stringify({ code: 503, message: "Twikoo server is shutting down" }));
       return;
     }
+    // 健康检查短路：不进 pipeline、不碰数据库——数据库未就绪时也能反映「进程活着」
+    if (req.method === "GET" && HEALTH_PATHS.has(stripQuery(req.url))) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ code: 0, message: "pong" }));
+      return;
+    }
     void (async () => {
-      /** 聚合请求体（JSON 解析失败按空体处理，1.x 语义） */
-      const buffers: Buffer[] = [];
-      for await (const chunk of req) buffers.push(chunk as Buffer);
+      /**
+       * 聚合请求体（累计字节上限 + 读取超时；JSON 解析失败按空体处理，1.x 语义）。
+       *
+       * 上限必须在**读流过程中**生效：先把整条流收进数组再 Buffer.concat 的话，
+       * 未登录攻击者能在限流生效前用超大请求体耗尽内存/CPU（GHSA-v349-m8q5-7x2g）。
+       */
+      let rawBody = "";
       try {
-        (req as ServerRequestShim).body = JSON.parse(Buffer.concat(buffers).toString() || "{}");
+        rawBody = await readBodyWithLimit(req);
+      } catch (e) {
+        /** 超限回 413、超时回 408；直接断开，不进 pipeline */
+        const tooLarge = e instanceof BodyTooLargeError;
+        const status = tooLarge ? 413 : 408;
+        res.writeHead(status, { Connection: "close", "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({ code: status, message: tooLarge ? "请求体过大" : "请求体读取超时" }),
+        );
+        return;
+      }
+      try {
+        (req as ServerRequestShim).body = JSON.parse(rawBody || "{}");
       } catch {
         (req as ServerRequestShim).body = {};
       }
@@ -92,7 +127,7 @@ export function createTkserverServer(options: { database?: Database } = {}): Tks
     isShuttingDown = true;
     await new Promise<void>((resolve) => server.close(() => resolve()));
     for (const socket of sockets) socket.destroy();
-    await shutdown({ timer });
+    await shutdown({ timer, database });
   };
 
   /** SIGTERM / SIGINT → 优雅退出（超时兜底强杀） */

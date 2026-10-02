@@ -110,6 +110,11 @@ class MemoryDatabase implements Database {
     return this.counters.get(url) ?? null;
   }
 
+  /** 计数：全量列表 */
+  async getAllCounters(): Promise<CounterDoc[]> {
+    return [...this.counters.values()];
+  }
+
   /** 计数：自增 */
   async incCounter(url: string): Promise<CounterDoc> {
     const current = this.counters.get(url) ?? { url, time: 0 };
@@ -141,6 +146,24 @@ class MemoryDatabase implements Database {
   /** 验证码：删除 */
   async capDel(key: string): Promise<void> {
     this.caps.delete(key);
+  }
+
+  /**
+   * 验证码：删除已过期记录（cap_kv 的值形如 `{ expires }`）。
+   * @param now 当前时间戳（毫秒）
+   * @returns 删除条数
+   */
+  async capDeleteExpired(now: number): Promise<number> {
+    let deleted = 0;
+    for (const [key, value] of [...this.caps.entries()]) {
+      if (typeof value !== "object" || value === null) continue;
+      const expires = (value as { expires?: unknown }).expires;
+      if (typeof expires === "number" && expires < now) {
+        this.caps.delete(key);
+        deleted += 1;
+      }
+    }
+    return deleted;
   }
 }
 

@@ -17,6 +17,7 @@ import {
   fromTkResponse,
   shutdown,
   startRequestTimesTimer,
+  toTkRequest,
 } from "../src/main";
 import type { ServerRequestLike, ServerResponseLike } from "../src/main";
 import type { Database, TkResponse } from "@twikoojs/common";
@@ -312,6 +313,73 @@ describe("tkserver 优雅退出全流程", () => {
     }
   }, 20000);
 
+  it("请求体超限：413 且不进入 pipeline；正常请求不受影响（GHSA-v349-m8q5-7x2g）", async () => {
+    process.env.TWIKOO_SKIP_BOOT = "1";
+    // 把上限压到 1 KB，避免测试真的传 16 MB
+    process.env.TWIKOO_MAX_BODY_BYTES = "1024";
+    const { createTkserverServer } = await import("../src/server");
+    const inst = createTkserverServer();
+    await new Promise<void>((resolve) => inst.server.listen(0, "127.0.0.1", resolve));
+    const port = (inst.server.address() as import("node:net").AddressInfo).port;
+    const url = `http://127.0.0.1:${port}/`;
+    try {
+      // 形态一：Content-Length 已超限 → 快速拒绝（一个字节都不读）
+      const declared = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "GET_FUNC_VERSION", pad: "x".repeat(4096) }),
+      });
+      expect(declared.status).toBe(413);
+
+      // 形态二：分块传输（无 Content-Length）→ 靠「边读边累加」兜底
+      const stream = new ReadableStream<Uint8Array>({
+        /**
+         * 推入超限数据后结束。
+         * @param controller 流控制器
+         */
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("x".repeat(4096)));
+          controller.close();
+        },
+      });
+      const chunked = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: stream,
+        // Node 的 fetch 要求流式请求体显式声明 half duplex
+        duplex: "half",
+      } as RequestInit & { duplex: "half" });
+      expect(chunked.status).toBe(413);
+
+      // 未超限的请求照常走 pipeline
+      const ok = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "GET_FUNC_VERSION" }),
+      });
+      expect(ok.status).toBe(200);
+      expect(((await ok.json()) as { code: number }).code).toBe(0);
+    } finally {
+      delete process.env.TWIKOO_MAX_BODY_BYTES;
+      await inst.gracefulShutdown();
+    }
+  }, 20000);
+
+  it("gracefulShutdown：关闭数据库（shutdown 接收已装配的 database，#1174 回归）", async () => {
+    process.env.TWIKOO_SKIP_BOOT = "1";
+    const { createTkserverServer } = await import("../src/server");
+    let closed = false;
+    const db = {
+      close: () => {
+        closed = true;
+        return Promise.resolve();
+      },
+    } as unknown as Database;
+    const inst = createTkserverServer({ database: db });
+    await inst.gracefulShutdown();
+    expect(closed).toBe(true);
+  });
+
   it("SIGTERM 信号处理：已注册（全平台）", async () => {
     process.env.TWIKOO_SKIP_BOOT = "1";
     const { createTkserverServer } = await import("../src/server");
@@ -342,4 +410,111 @@ describe("tkserver 优雅退出全流程", () => {
     },
     20000,
   );
+
+  it("健康检查：GET /ping 直接 200 + pong，且不进 pipeline（数据库不可用也不受影响）", async () => {
+    process.env.TWIKOO_SKIP_BOOT = "1";
+    const { createTkserverServer } = await import("../src/server");
+    /** 任何方法都抛错的数据库替身：走 pipeline 的请求必然失败，/ping 短路则不受影响
+     * （close 豁免：gracefulShutdown 需要经 shutdown 正常关库） */
+    const failingDb = new Proxy({} as Database, {
+      get: (_target, prop) =>
+        prop === "close"
+          ? () => Promise.resolve()
+          : async () => {
+              throw new Error(`db.${String(prop)} 被调用`);
+            },
+    });
+    const inst = createTkserverServer({ database: failingDb });
+    await new Promise<void>((resolve) => inst.server.listen(0, "127.0.0.1", resolve));
+    const port = (inst.server.address() as AddressInfo).port;
+    try {
+      const ping = await fetch(`http://127.0.0.1:${port}/ping`);
+      expect(ping.status).toBe(200);
+      const body = (await ping.json()) as { code: number; message: string };
+      expect(body.code).toBe(0);
+      expect(body.message).toBe("pong");
+      // 编排系统常用的 /healthz 同名支持
+      const healthz = await fetch(`http://127.0.0.1:${port}/healthz`);
+      expect(healthz.status).toBe(200);
+    } finally {
+      await inst.gracefulShutdown();
+    }
+  }, 20000);
+});
+
+describe("客户端 IP 解析（#1174：恢复 get-user-ip 的直连兜底）", () => {
+  /**
+   * 构造最小 Node 请求。
+   * @param overrides 覆盖字段
+   * @returns 请求对象
+   */
+  function makeReq(overrides: Partial<ServerRequestLike> = {}): ServerRequestLike {
+    return { method: "POST", headers: {}, body: {}, ...overrides };
+  }
+
+  it("代理头优先：x-client-ip > x-real-ip > x-forwarded-for（多跳取首跳）", () => {
+    expect(toTkRequest(makeReq({ headers: { "x-client-ip": "10.0.0.1" } })).ip).toBe("10.0.0.1");
+    expect(toTkRequest(makeReq({ headers: { "x-real-ip": "10.0.0.2" } })).ip).toBe("10.0.0.2");
+    expect(
+      toTkRequest(makeReq({ headers: { "x-forwarded-for": "10.0.0.3, 172.16.0.1" } })).ip,
+    ).toBe("10.0.0.3");
+    // x-client-ip 压过 x-real-ip / x-forwarded-for
+    expect(
+      toTkRequest(
+        makeReq({
+          headers: {
+            "x-client-ip": "10.0.0.1",
+            "x-real-ip": "10.0.0.2",
+            "x-forwarded-for": "10.0.0.3",
+          },
+        }),
+      ).ip,
+    ).toBe("10.0.0.1");
+  });
+
+  it("无代理头时用 connection/socket.remoteAddress 兜底（直连不再全落空 IP）", () => {
+    // 直连：只有 socket
+    expect(toTkRequest(makeReq({ socket: { remoteAddress: "203.0.113.7" } })).ip).toBe(
+      "203.0.113.7",
+    );
+    // connection.remoteAddress 优先于 socket
+    expect(
+      toTkRequest(
+        makeReq({
+          connection: { remoteAddress: "203.0.113.8" },
+          socket: { remoteAddress: "203.0.113.7" },
+        }),
+      ).ip,
+    ).toBe("203.0.113.8");
+    // connection.socket.remoteAddress 兜底
+    expect(
+      toTkRequest(makeReq({ connection: { socket: { remoteAddress: "203.0.113.9" } } })).ip,
+    ).toBe("203.0.113.9");
+  });
+
+  it("全部来源缺失 → 0.0.0.0（1.x get-user-ip 兜底值）", () => {
+    expect(toTkRequest(makeReq()).ip).toBe("0.0.0.0");
+  });
+
+  it("TWIKOO_IP_HEADERS 覆写来源（如 CloudFlare 的 cf-connecting-ip）", () => {
+    process.env.TWIKOO_IP_HEADERS = JSON.stringify(["headers.cf-connecting-ip"]);
+    try {
+      const req = makeReq({
+        headers: { "cf-connecting-ip": "198.51.100.5", "x-real-ip": "10.0.0.2" },
+        socket: { remoteAddress: "203.0.113.7" },
+      });
+      expect(toTkRequest(req).ip).toBe("198.51.100.5");
+    } finally {
+      delete process.env.TWIKOO_IP_HEADERS;
+    }
+  });
+
+  it("TWIKOO_IP_HEADERS 非法 JSON → 回退默认来源顺序（不抛错）", () => {
+    process.env.TWIKOO_IP_HEADERS = "{ not json";
+    try {
+      expect(toTkRequest(makeReq({ headers: { "x-real-ip": "10.0.0.2" } })).ip).toBe("10.0.0.2");
+    } finally {
+      delete process.env.TWIKOO_IP_HEADERS;
+    }
+  });
 });

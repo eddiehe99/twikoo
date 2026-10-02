@@ -36,7 +36,10 @@ import {
   commentMatchesKeyword,
   getSearchKeyword,
   queryVisibleComments,
+  searchVisibleComments,
 } from "../../src/services/comment-query";
+import { createRequestLogger } from "../../src/utils/logger";
+import type { PipelineContext } from "../../src/core/types";
 import { createCap, databaseCapStorage, isBuiltinCap, validateToken } from "../../src/services/cap";
 import { parseImage } from "../../src/services/upload";
 import { preCheckSpam } from "../../src/services/spam";
@@ -465,6 +468,66 @@ describe("评论查询可见性（services/comment-query）", () => {
     expect(commentMatchesKeyword({ comment: "hello" } as never, "xyz")).toBe(false);
   });
 
+  it("commentMatchesKeyword：mail/ip 仅在 includeSensitive 时可匹配（GHSA-v349-m8q5-7x2g）", () => {
+    const doc = {
+      nick: "路人",
+      mail: "secret@example.com",
+      ip: "203.0.113.7",
+      comment: "正文",
+    } as never;
+    // 访客范围（默认）：不得命中 mail / ip
+    expect(commentMatchesKeyword(doc, "secret@example.com")).toBe(false);
+    expect(commentMatchesKeyword(doc, "203.0.113")).toBe(false);
+    // 管理端范围：保留原有行为
+    expect(commentMatchesKeyword(doc, "secret@example.com", { includeSensitive: true })).toBe(true);
+    expect(commentMatchesKeyword(doc, "203.0.113", { includeSensitive: true })).toBe(true);
+    // 公开字段不受影响
+    expect(commentMatchesKeyword(doc, "路人")).toBe(true);
+    expect(commentMatchesKeyword(doc, "正文")).toBe(true);
+  });
+
+  it("访客搜索（searchVisibleComments）不能用作邮箱/IP 存在性预言机", async () => {
+    const adapters = createMemoryAdapters();
+    await adapters.database.addComment({
+      _id: "s1",
+      nick: "路人",
+      comment: "正文里没有任何联系方式",
+      url: "/p",
+      mail: "secret@example.com",
+      ip: "203.0.113.7",
+    });
+    /**
+     * 组装最小上下文（searchVisibleComments 直调用）。
+     * @param body 请求体
+     * @returns 请求上下文
+     */
+    const ctx = (body: Record<string, unknown>): PipelineContext => ({
+      request: {
+        method: "POST",
+        path: "/",
+        query: {},
+        body: { event: "COMMENT_GET", ...body },
+        headers: {},
+        ip: "",
+        raw: null,
+      },
+      requestId: "ctx-id",
+      accessToken: "",
+      config: {},
+      configReadFailed: false,
+      adapters,
+      logger: createRequestLogger("ctx-id"),
+    });
+    // 改前：以邮箱为关键词能查出该评论 → 可逐字符探测邮箱/IP
+    expect((await searchVisibleComments(ctx({ url: "/p", keyword: "secret@example.com" }))).data)
+      .toHaveLength(0);
+    expect((await searchVisibleComments(ctx({ url: "/p", keyword: "203.0.113" }))).data)
+      .toHaveLength(0);
+    // 正文命中仍然正常（公开字段不受影响）
+    expect((await searchVisibleComments(ctx({ url: "/p", keyword: "联系方式" }))).data)
+      .toHaveLength(1);
+  });
+
   it("queryVisibleComments：访客合并去重（非垃圾 ∪ 本人）", async () => {
     const adapters = createMemoryAdapters();
     const db = adapters.database;
@@ -524,6 +587,27 @@ describe("Cap 服务（services/cap）", () => {
     expect(await storage.challenges.read("t2")).toBeNull();
     await storage.challenges.deleteExpired();
     await storage.tokens.deleteExpired();
+  });
+
+  it("deleteExpired：真正删除过期记录，而非读取时过滤（#1174）", async () => {
+    const adapters = createMemoryAdapters();
+    const storage = databaseCapStorage(adapters.database);
+    const db = adapters.database;
+    const now = Date.now();
+    await storage.challenges.store("c-expired", { challenge: "x", expires: now - 1 });
+    await storage.challenges.store("c-alive", { challenge: "y", expires: now + 60000 });
+    await storage.tokens.store("t-expired", now - 1);
+    await storage.tokens.store("t-alive", now + 60000);
+
+    // 此前是无操作空实现：过期记录只被「读取时过滤」，永远留在库里无限增长
+    await storage.challenges.deleteExpired();
+
+    // 断言键被**真正删除**（capGet 直查底层，绕过读取时的过期过滤）
+    expect(await db.capGet("cap:c:c-expired")).toBeNull();
+    expect(await db.capGet("cap:t:t-expired")).toBeNull();
+    // 未过期的必须保留
+    expect(await db.capGet("cap:c:c-alive")).toEqual({ challenge: "y", expires: now + 60000 });
+    expect(await db.capGet("cap:t:t-alive")).toEqual({ expires: now + 60000 });
   });
 
   it("isBuiltinCap / validateToken", async () => {

@@ -1,25 +1,27 @@
 {
-  "name": "twikoo-edgeone-makers",
+  "name": "@twikoojs/edgeone-makers",
   "version": "0.0.0",
-  "private": true,
   "description": "Twikoo comment system backend for Tencent EdgeOne Makers",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/twikoojs/twikoo.git"
+  },
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/cloud-functions/index.js",
+  "module": "./dist/cloud-functions/index.js",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "default": "./dist/cloud-functions/index.js"
     }
   },
   "files": [
-    "dist"
+    "dist/cloud-functions/index.js"
   ],
   "scripts": {
-    "build": "tsdown && node scripts/build-ip2region-data.mjs",
-    "check:size": "node scripts/check-eo-size.mjs",
+    "build": "node scripts/build-ip2region-data.mjs && tsdown && node scripts/build-zip.mjs",
+    "build:zip": "node scripts/build-zip.mjs",
+    "check:bundle": "node scripts/check-eo-bundle.mjs",
     "check:ip2region": "node scripts/build-ip2region-data.mjs --check",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
@@ -29,7 +31,6 @@
     "@edgeone/pages-blob": "latest",
     "@twikoojs/common": "workspace:*",
     "@twikoojs/shared": "workspace:*",
-    "axios": "^1.20.0",
     "bowser": "^2.14.1",
     "form-data": "^4.0.6",
     "html-to-text": "^10.0.1",

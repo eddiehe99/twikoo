@@ -93,13 +93,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, onUnmounted, reactive, ref } from "vue";
 import { VERSION } from "@twikoojs/shared";
 import TkButton from "../components/TkButton.vue";
 import TkInput from "../components/TkInput.vue";
 import { call, logger, t } from "../utils";
 import { getAppState } from "../utils/api";
-import { EVENT_CONFIG_UPDATED, emit as busEmit } from "../utils/bus";
+import { EVENT_CONFIG_UPDATED, emit as busEmit, off as busOff, on as busOn } from "../utils/bus";
 import { vLoading } from "../utils/directives";
 import { customImageBedServices } from "../i18n/constants";
 import type { ServerConfig } from "../types";
@@ -509,6 +509,31 @@ function createSettings(): SettingGroup[] {
           value: "",
         },
         {
+          key: "JEV_API_KEY",
+          desc: t("ADMIN_CONFIG_ITEM_JEV_API_KEY"),
+          ph: "your-typesafe-api-key",
+          value: "",
+          secret: true,
+        },
+        {
+          key: "JEV_API_ENDPOINT",
+          desc: t("ADMIN_CONFIG_ITEM_JEV_API_ENDPOINT"),
+          ph: "https://api.typesafe.ai/v1/systemone",
+          value: "",
+        },
+        {
+          key: "JEV_MODEL",
+          desc: t("ADMIN_CONFIG_ITEM_JEV_MODEL"),
+          ph: "jev-latest",
+          value: "",
+        },
+        {
+          key: "JEV_SPAM_THRESHOLD",
+          desc: t("ADMIN_CONFIG_ITEM_JEV_SPAM_THRESHOLD"),
+          ph: "0.85",
+          value: "",
+        },
+        {
           key: "LLM_API_KEY",
           desc: t("ADMIN_CONFIG_ITEM_LLM_API_KEY"),
           ph: "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -811,8 +836,19 @@ async function testEmail(): Promise<void> {
   loading.value = false;
 }
 
+/** 配置已更新（保存或导入）后重新回填表单 */
+function onConfigUpdated(): void {
+  void readConfig();
+}
+
 onMounted(() => {
   void readConfig();
+  // 配置变更后本页表单需重新回填
+  busOn(EVENT_CONFIG_UPDATED, onConfigUpdated);
+});
+
+onUnmounted(() => {
+  busOff(EVENT_CONFIG_UPDATED, onConfigUpdated);
 });
 </script>
 

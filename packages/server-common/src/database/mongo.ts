@@ -219,6 +219,12 @@ export class MongoDatabase implements Database {
     return (doc as unknown as CounterDoc) ?? null;
   }
 
+  /** 计数：获取全部页面计数（导出用，按自然序） */
+  async getAllCounters(): Promise<CounterDoc[]> {
+    const docs = await this.col("counter").find({}).toArray();
+    return docs as unknown as CounterDoc[];
+  }
+
   /** 计数：自增（update 命中 0 条则插入首条；1.x incCounter 兜底语义） */
   async incCounter(url: string, title?: string): Promise<CounterDoc> {
     const now = Date.now();
@@ -267,5 +273,18 @@ export class MongoDatabase implements Database {
   /** 验证码：按 key 删除 */
   async capDel(key: string): Promise<void> {
     await this.col("cap_kv").deleteOne({ key });
+  }
+
+  /**
+   * 验证码：删除已过期记录（cap_kv 的值形如 `{ expires }`）。
+   *
+   * 下推为 `deleteMany({ "value.expires": { $lt: now } })`——该集合正是
+   * 「过期不清理会无限增长」的那个，绝不能全量拉回再逐条删。
+   * @param now 当前时间戳（毫秒）
+   * @returns 删除条数
+   */
+  async capDeleteExpired(now: number): Promise<number> {
+    const result = await this.col("cap_kv").deleteMany({ "value.expires": { $lt: now } });
+    return result.deletedCount ?? 0;
   }
 }

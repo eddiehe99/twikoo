@@ -229,13 +229,24 @@ async function noticePushoo(options: {
   const pushContent = await getIMPushContent(comment, config);
   // pushoo 由适配器按通知能力安装，运行时动态加载（变量间接保证零静态解析）
   const pushoo = await getPushoo();
+  /** PUSHOO_OPTIONS：可选附加参数（JSON），与内置 bark.url 合并后透传（如 Bark 的 group / icon / level） */
+  let extraOptions: Record<string, Record<string, unknown>> = {};
+  if (config.PUSHOO_OPTIONS) {
+    try {
+      extraOptions = JSON.parse(String(config.PUSHOO_OPTIONS));
+    } catch (e) {
+      logger.warn("PUSHOO_OPTIONS 不是合法 JSON，已忽略：", e);
+    }
+  }
   const sendResult = await pushoo(String(config.PUSHOO_CHANNEL), {
     token: config.PUSHOO_TOKEN,
     title: pushContent.subject,
     content: pushContent.content,
     options: {
+      ...extraOptions,
       bark: {
         url: pushContent.url,
+        ...extraOptions.bark,
       },
     },
   });
@@ -350,13 +361,15 @@ export async function sendNotice(options: {
 }): Promise<void> {
   const { comment, config, caps, logger, getParentComment } = options;
   if (comment.isSpam && config.NOTIFY_SPAM === "false") return;
-  await Promise.all([
+  // 单路失败也要等其他通知完成：回复通知可能仍需读库，适配器随后才可关闭连接。
+  const results = await Promise.allSettled([
     noticeMaster({ comment, config, caps, logger }),
     noticeReply({ currentComment: comment, config, caps, logger, getParentComment }),
     noticePushoo({ comment, config, logger }),
-  ]).catch((err) => {
-    logger.error("通知异常：", err);
-  });
+  ]);
+  for (const result of results) {
+    if (result.status === "rejected") logger.error("通知异常：", result.reason);
+  }
 }
 
 /**
@@ -372,7 +385,6 @@ export async function emailTest(options: {
   logger: RequestLogger;
 }): Promise<Record<string, unknown>> {
   const { mail, config, isAdminUser, caps, logger } = options;
-  void caps;
   /** 响应体 */
   const res: Record<string, unknown> = {};
   if (!isAdminUser) {

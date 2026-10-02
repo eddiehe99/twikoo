@@ -232,6 +232,24 @@ describe("COMMENT_IMPORT_FOR_ADMIN / COMMENT_EXPORT_FOR_ADMIN", () => {
     });
     expect(res2.body.log).toContain("不支持 unknown-src");
   });
+
+  it("导出访问量：collection=counter 取计数而非评论", async () => {
+    await seed();
+    await adapters.database.incCounter("/export", "导出页");
+    const res = await postAdmin({ event: "COMMENT_EXPORT_FOR_ADMIN", collection: "counter" });
+    expect(res.body.code).toBe(0);
+    const data = res.body.data as Array<{ url: string; time: number }>;
+    expect(data).toHaveLength(1);
+    expect(data[0].url).toBe("/export");
+    expect(data[0].time).toBe(1);
+  });
+
+  it("导出：未知 collection → FAIL 且不返回数据", async () => {
+    const res = await postAdmin({ event: "COMMENT_EXPORT_FOR_ADMIN", collection: "profile" });
+    expect(res.body.code).toBe(1000);
+    expect(res.body.message).toBe("collection 仅支持 comment 或 counter");
+    expect(res.body.data).toBeUndefined();
+  });
 });
 
 describe("COMMENT_LIKE", () => {
@@ -514,17 +532,13 @@ describe("EMAIL_TEST / UPLOAD_IMAGE / GET_QQ_NICK（重依赖替身注入）", (
   it("qq nick：缺 qq 报错；替身 axios 返回昵称", async () => {
     const bad = await post({ event: "GET_QQ_NICK" });
     expect(bad.body.message).toBe('参数"qq"不合法');
-    setLibImporter(async (specifier) => {
-      expect(specifier).toBe("axios");
-      return {
-        default: {
-          /**
-           *
-           */
-          get: async () => ({ data: { code: 200, data: { nick: "QQ昵称" } } }),
-        },
-      };
-    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ code: 200, data: { nick: "QQ昵称" } }), { status: 200 }),
+      ),
+    );
     const ok = await post({ event: "GET_QQ_NICK", qq: "12345" });
     expect(ok.body.code).toBe(0);
     expect(ok.body.nick).toBe("QQ昵称");

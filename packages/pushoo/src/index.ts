@@ -1,6 +1,4 @@
-import axios from "axios";
-import { marked } from "marked";
-import markdownToTxt from "markdown-to-txt";
+import removeMarkdown from "remove-markdown";
 
 export interface NoticeOptions {
   /**
@@ -24,6 +22,30 @@ export interface NoticeOptions {
      * url 用于点击通知后跳转的地址
      */
     url?: string;
+    /**
+     * 通知级别（active / timeSensitive / critical / passive）
+     */
+    level?: string;
+    /**
+     * 通知分组（同组通知在系统通知中心折叠展示）
+     */
+    group?: string;
+    /**
+     * 自定义图标地址
+     */
+    icon?: string;
+    /**
+     * 铃声名（Bark App 内置或自定义铃声）
+     */
+    sound?: string;
+    /**
+     * 角标数字
+     */
+    badge?: number | string;
+    /**
+     * 是否保存到通知历史（"1" 保存 / "0" 不保存）
+     */
+    isArchive?: "1" | "0";
   };
   /**
    * IFTTT通知方式的参数配置
@@ -78,6 +100,27 @@ export interface NoticeOptions {
      */
     msgtype?: string;
   };
+  /**
+   * ntfy 通知方式的参数配置
+   */
+  ntfy?: {
+    /**
+     * 访问令牌（topic 受保护时使用，作为 Bearer 认证）
+     */
+    accessToken?: string;
+    /**
+     * 优先级，1-5 或 min/low/default/high/urgent
+     */
+    priority?: string | number;
+    /**
+     * 标签，逗号分隔
+     */
+    tags?: string;
+    /**
+     * 点击通知后跳转的地址
+     */
+    click?: string;
+  };
 }
 export interface CommonOptions {
   token: string;
@@ -95,7 +138,6 @@ export type ChannelType =
   | "serverchan"
   | "serverchain"
   | "pushplus"
-  | "pushplushxtrip"
   | "dingtalk"
   | "wecom"
   | "bark"
@@ -106,10 +148,12 @@ export type ChannelType =
   | "igot"
   | "telegram"
   | "feishu"
+  | "lark"
   | "ifttt"
   | "wecombot"
   | "discord"
   | "wxpusher"
+  | "ntfy"
   | "join";
 
 function checkParameters(options: any, requires: string[] = []) {
@@ -120,12 +164,86 @@ function checkParameters(options: any, requires: string[] = []) {
   });
 }
 
-function getHtml(content: string) {
-  return marked.parse(content);
+/**
+ * 发送请求：非 2xx 抛错（与 axios 一致），返回 { data, status } 供各渠道读取。
+ *
+ * 用原生 fetch 而非 axios，是为了能在 Cloudflare Workers 等只提供 Web 标准 API 的
+ * 运行时里工作（axios 依赖 Node 的 http 模块）。
+ * @param url 请求地址
+ * @param init fetch 参数
+ * @returns 响应数据与状态码
+ */
+async function sendRequest(
+  url: string,
+  init: RequestInit = {},
+): Promise<{ data: any; status: number }> {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    throw new Error(`Request failed with status code ${response.status}`);
+  }
+  const text = await response.text();
+  let data: any = text;
+  try {
+    data = text ? JSON.parse(text) : text;
+  } catch {
+    // 非 JSON 响应保持文本形态（与 axios 的 response.data 一致）
+  }
+  return { data, status: response.status };
+}
+
+/**
+ * GET 请求（调用形态对齐 `axios.get(url, { params })`）。
+ *
+ * params 兼容普通对象与 URLSearchParams 两种形态（bark 传的是后者）。
+ * @param url 请求地址
+ * @param config 查询参数
+ * @returns 响应数据与状态码
+ */
+function httpGet(
+  url: string,
+  config: { params?: Record<string, string> | URLSearchParams } = {},
+) {
+  const params = config.params;
+  const entries =
+    params instanceof URLSearchParams
+      ? [...params]
+      : (Object.entries(params ?? {}) as Array<[string, string]>);
+  const queryString = new URLSearchParams(
+    entries.filter(([, value]) => value !== undefined),
+  ).toString();
+  const requestUrl = queryString ? `${url}${url.includes("?") ? "&" : "?"}${queryString}` : url;
+  return sendRequest(requestUrl, { method: "GET" });
+}
+
+/**
+ * POST 请求（调用形态对齐 `axios.post(url, data, config)`）。
+ *
+ * 对象体走 JSON、字符串体走表单编码，与 axios 的默认推断一致——服务端常按
+ * Content-Type 分流解析。
+ * @param url 请求地址
+ * @param body 请求体
+ * @param config 请求头与超时（毫秒）
+ * @returns 响应数据与状态码
+ */
+function httpPost(
+  url: string,
+  body?: unknown,
+  config: { headers?: Record<string, string>; timeout?: number } = {},
+) {
+  const isStringBody = typeof body === "string";
+  const headers: Record<string, string> = isStringBody
+    ? { "Content-Type": "application/x-www-form-urlencoded", ...config.headers }
+    : { "Content-Type": "application/json", ...config.headers };
+  return sendRequest(url, {
+    method: "POST",
+    body: isStringBody ? body : JSON.stringify(body ?? {}),
+    headers,
+    signal: config.timeout ? AbortSignal.timeout(config.timeout) : undefined,
+  });
 }
 
 function getTxt(content: string) {
-  return markdownToTxt(content);
+  return removeMarkdown(content).trim();
 }
 
 function getTitle(content: string) {
@@ -157,7 +275,7 @@ async function noticeWebhook(options: CommonOptions) {
       ...(options.title ? { title: options.title } : {}),
       content: options.content,
     });
-    const response = await axios.get(url, { params });
+    const response = await httpGet(url, { params });
     return response.data;
   }
   if (method === "POST") {
@@ -166,7 +284,7 @@ async function noticeWebhook(options: CommonOptions) {
       ...(options.title && { title: options.title }),
       content: options.content,
     };
-    const response = await axios.post(url, payload);
+    const response = await httpPost(url, payload);
     return response.data;
   }
   throw new Error(`Unsupported Webhook request method: ${method}`);
@@ -194,7 +312,7 @@ async function noticeQmsg(options: CommonOptions) {
     param.append("bot", bot);
   }
   const group = options?.options?.qmsg?.group || false;
-  const response = await axios.post(
+  const response = await httpPost(
     `${url}/${group ? "group" : "send"}/${options.token}`,
     param.toString(),
     {
@@ -218,7 +336,7 @@ async function noticeAtri(options: CommonOptions) {
     user_id: options.token,
     message,
   });
-  const response = await axios.post(url, param.toString(), {
+  const response = await httpPost(url, param.toString(), {
     headers: { "X-Requested-By": "pushoo" },
   });
   return response.data;
@@ -253,7 +371,7 @@ async function noticeServerChan(options: CommonOptions) {
       desp: options.content,
     });
   }
-  const response = await axios.post(`${url}/${options.token}.send`, param.toString(), {
+  const response = await httpPost(`${url}/${options.token}.send`, param.toString(), {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
   return response.data;
@@ -271,23 +389,7 @@ async function noticePushPlus(options: CommonOptions) {
     content: options.content,
     template: "markdown",
   };
-  const response = await axios.post(ppApiUrl, ppApiParam);
-  return response.data;
-}
-
-/**
- * https://pushplus.hxtrip.com/
- */
-async function noticePushPlusHxtrip(options: CommonOptions) {
-  checkParameters(options, ["token", "content"]);
-  const ppApiUrl = "http://pushplus.hxtrip.com/send";
-  const ppApiParam = {
-    token: options.token,
-    title: options.title || getTitle(options.content),
-    content: getHtml(options.content),
-    template: "html",
-  };
-  const response = await axios.post(ppApiUrl, ppApiParam);
+  const response = await httpPost(ppApiUrl, ppApiParam);
   return response.data;
 }
 
@@ -319,7 +421,7 @@ async function noticeDingTalk(options: CommonOptions) {
   } else if (msgtype === "markdown") {
     msgBody[msgtype] = { title: options.title || getTitle(options.content), text: content };
   }
-  const response = await axios.post(url, msgBody);
+  const response = await httpPost(url, msgBody);
   return response.data;
 }
 
@@ -341,7 +443,7 @@ async function noticeWeCom(options: CommonOptions) {
   // 获取 Access Token
   let accessToken;
   try {
-    const accessTokenRes = await axios.get(
+    const accessTokenRes = await httpGet(
       `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${corpid}&corpsecret=${corpsecret}`,
     );
     accessToken = accessTokenRes.data.access_token;
@@ -361,7 +463,7 @@ async function noticeWeCom(options: CommonOptions) {
     agentid,
     text: { content },
   };
-  const response = await axios.post(url, param);
+  const response = await httpPost(url, param);
   return response.data;
 }
 
@@ -379,10 +481,14 @@ async function noticeBark(options: CommonOptions) {
   if (!url.endsWith("/")) url += "/";
   const title = encodeURIComponent(options.title || getTitle(options.content));
   const content = encodeURIComponent(getTxt(options.content));
-  const params = new URLSearchParams({
-    url: options?.options?.bark?.url || "",
-  });
-  const response = await axios.get(`${url}${title}/${content}/`, { params });
+  /** url 沿用 1.x：即使未配置也带上（行为基准）；其余可选参数有值才透传 */
+  const params = new URLSearchParams({ url: options?.options?.bark?.url || "" });
+  for (const [key, value] of Object.entries(options?.options?.bark ?? {})) {
+    if (key === "url") continue;
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+  const response = await httpGet(`${url}${title}/${content}/`, { params });
   return response.data;
 }
 
@@ -398,7 +504,7 @@ async function noticeGoCqhttp(options: CommonOptions) {
     message = `${options.title}\n${message}`;
   }
   const param = new URLSearchParams({ message });
-  const response = await axios.post(url, param.toString());
+  const response = await httpPost(url, param.toString());
   return response.data;
 }
 
@@ -430,7 +536,7 @@ async function noticeNodeOnebot(options: CommonOptions) {
     if (groupId) body.group_id = Number(groupId);
     if (userId) body.user_id = Number(userId);
 
-    const response = await axios.post(apiUrl, body, {
+    const response = await httpPost(apiUrl, body, {
       timeout: 5000,
       headers: { "Content-Type": "application/json" },
     });
@@ -449,7 +555,7 @@ async function noticeNodeOnebot(options: CommonOptions) {
 async function noticePushdeer(options: CommonOptions) {
   checkParameters(options, ["token", "content"]);
   const url = "https://api2.pushdeer.com/message/push";
-  const response = await axios.post(url, {
+  const response = await httpPost(url, {
     pushkey: options.token,
     text: options.title || getTitle(options.content),
     desp: options.content,
@@ -460,7 +566,7 @@ async function noticePushdeer(options: CommonOptions) {
 async function noticeIgot(options: CommonOptions) {
   checkParameters(options, ["token", "content"]);
   const url = `https://push.hellyw.com/${options.token}`;
-  const response = await axios.post(url, {
+  const response = await httpPost(url, {
     title: options.title || getTitle(options.content),
     content: getTxt(options.content),
   });
@@ -485,7 +591,7 @@ async function noticeTelegram(options: CommonOptions) {
   if (options.title) {
     text = `${options.title}\n\n${text}`;
   }
-  const response = await axios.post(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+  const response = await httpPost(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
     text,
     chat_id: chatId,
     parse_mode: "Markdown",
@@ -494,12 +600,15 @@ async function noticeTelegram(options: CommonOptions) {
 }
 
 /**
- * https://www.feishu.cn/hc/zh-CN/articles/360024984973
+ * 飞书 / Lark 机器人推送：两端点仅开放平台 base URL 不同，其余请求语义一致。
+ * @param baseUrl 开放平台 base URL
+ * @param options 推送参数
+ * @returns 接口返回体
  */
-async function noticeFeishu(options: CommonOptions) {
+async function noticeFeishuBot(baseUrl: string, options: CommonOptions) {
   checkParameters(options, ["token", "content"]);
-  const v1 = "https://open.feishu.cn/open-apis/bot/hook/";
-  const v2 = "https://open.feishu.cn/open-apis/bot/v2/hook/";
+  const v1 = `${baseUrl}/open-apis/bot/hook/`;
+  const v2 = `${baseUrl}/open-apis/bot/v2/hook/`;
   let url;
   let params;
   if (options.token.substring(0, 4).toLowerCase() === "http") {
@@ -522,8 +631,22 @@ async function noticeFeishu(options: CommonOptions) {
       content: { text },
     };
   }
-  const response = await axios.post(url, params);
+  const response = await httpPost(url, params);
   return response.data;
+}
+
+/**
+ * https://www.feishu.cn/hc/zh-CN/articles/360024984973
+ */
+async function noticeFeishu(options: CommonOptions) {
+  return noticeFeishuBot("https://open.feishu.cn", options);
+}
+
+/**
+ * Lark（飞书国际版）：https://open.larksuite.com/
+ */
+async function noticeLark(options: CommonOptions) {
+  return noticeFeishuBot("https://open.larksuite.com", options);
 }
 
 /**
@@ -544,7 +667,7 @@ async function noticeIfttt(options: CommonOptions) {
 
   const url = `https://maker.ifttt.com/trigger/${eventName}/with/key/${token}`;
 
-  const response = await axios.post(
+  const response = await httpPost(
     url,
     {
       value1: options.options?.ifttt?.value1 || getTxt(options.title || ""),
@@ -567,7 +690,7 @@ async function noticeWecombot(options: CommonOptions) {
   const url = `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${options.token}`;
   const content = getTxt(options.content);
 
-  const response = await axios.post(
+  const response = await httpPost(
     url,
     {
       msgtype: "text",
@@ -592,7 +715,7 @@ async function noticeDiscord(options: CommonOptions) {
     ? options.token
     : `https://discord.com/api/webhooks/${options.token.replace(/#/, "/")}`;
 
-  const response = await axios.post(
+  const response = await httpPost(
     url,
     {
       content: options.content,
@@ -617,7 +740,7 @@ async function noticeWxPusher(options: CommonOptions) {
   const [appToken, topicIds] = options.token.split("#");
   checkParameters({ appToken, topicIds }, ["appToken", "topicIds"]);
 
-  const response = await axios.post(
+  const response = await httpPost(
     url,
     {
       appToken,
@@ -654,9 +777,51 @@ async function noticeJoin(options: CommonOptions) {
     title: options.title || getTitle(options.content),
     text: options.content,
   });
-  const response = await axios.post(url, param.toString(), {
+  const response = await httpPost(url, param.toString(), {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
+  return response.data;
+}
+
+/**
+ * 头部值编码：HTTP 头部只接受 latin1，非 ASCII 值按 RFC 2047 编码（ntfy 支持该形式）
+ * @param value 原始头部值
+ * @returns 可写入头部的值
+ */
+function encodeHeaderValue(value: string): string {
+  if (/^[\x20-\x7e]*$/.test(value)) return value;
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  const base64 =
+    typeof Buffer === "undefined" ? btoa(binary) : Buffer.from(bytes).toString("base64");
+  return `=?UTF-8?B?${base64}?=`;
+}
+
+/**
+ * ntfy 推送
+ * 文档: https://docs.ntfy.sh/publish/
+ * @param options 推送参数
+ * @returns 接口返回体
+ */
+async function noticeNtfy(options: CommonOptions) {
+  checkParameters(options, ["token", "content"]);
+  // token 支持 topic 名（公共实例）或完整 URL（自建实例）
+  const url = options.token.startsWith("http")
+    ? options.token
+    : `https://ntfy.sh/${options.token}`;
+  const ntfy = options.options?.ntfy;
+  const headers: Record<string, string> = {
+    "Content-Type": "text/plain; charset=utf-8",
+    Title: encodeHeaderValue(options.title || getTitle(options.content)),
+  };
+  if (ntfy?.priority !== undefined) headers.Priority = String(ntfy.priority);
+  if (ntfy?.tags) headers.Tags = ntfy.tags;
+  if (ntfy?.click) headers.Click = ntfy.click;
+  if (ntfy?.accessToken) headers.Authorization = `Bearer ${ntfy.accessToken}`;
+  const response = await httpPost(url, getTxt(options.content), { headers });
   return response.data;
 }
 
@@ -669,7 +834,6 @@ async function notice(channel: ChannelType | string, options: CommonOptions) {
       serverchan: noticeServerChan,
       serverchain: noticeServerChan,
       pushplus: noticePushPlus,
-      pushplushxtrip: noticePushPlusHxtrip,
       dingtalk: noticeDingTalk,
       wecom: noticeWeCom,
       bark: noticeBark,
@@ -680,10 +844,12 @@ async function notice(channel: ChannelType | string, options: CommonOptions) {
       igot: noticeIgot,
       telegram: noticeTelegram,
       feishu: noticeFeishu,
+      lark: noticeLark,
       ifttt: noticeIfttt,
       wecombot: noticeWecombot,
       discord: noticeDiscord,
       wxpusher: noticeWxPusher,
+      ntfy: noticeNtfy,
       join: noticeJoin,
     }[channel.toLowerCase()];
     if (noticeFn) {
@@ -719,7 +885,6 @@ export {
   noticeQmsg,
   noticeServerChan,
   noticePushPlus,
-  noticePushPlusHxtrip,
   noticeDingTalk,
   noticeWeCom,
   noticeBark,
@@ -730,9 +895,11 @@ export {
   noticeIgot,
   noticeTelegram,
   noticeFeishu,
+  noticeLark,
   noticeIfttt,
   noticeWecombot,
   noticeDiscord,
   noticeWxPusher,
+  noticeNtfy,
   noticeJoin,
 };
