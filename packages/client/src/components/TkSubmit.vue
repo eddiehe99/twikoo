@@ -21,6 +21,7 @@
           :link="link"
           :config="config"
           @update="onMetaUpdate"
+          @validate="isMetaValid = $event"
         />
         <TkInput
           ref="textareaRef"
@@ -110,7 +111,7 @@ import TkInput from "../components/TkInput.vue";
 import TkIcon from "../components/TkIcon.vue";
 import { ICONS } from "../components/icons";
 import OwO from "../lib/owo";
-import { TwikooError, call, getAppState } from "../utils/api";
+import { TwikooError, call, getAppState, getErrorMessage } from "../utils/api";
 import {
   blobToDataURL,
   getHref,
@@ -673,6 +674,8 @@ async function send(): Promise<void> {
     const result = (res.result ?? res) as { id?: string; code?: number; message?: string };
     if (result.id) {
       comment.value = "";
+      isPreviewing.value = false;
+      commentHtml.value = "";
       error.value = undefined;
       emit("load");
       saveDraft();
@@ -688,8 +691,8 @@ async function send(): Promise<void> {
     error.value =
       e instanceof TwikooError
         ? e
-        : new TwikooError("UNKNOWN", `${t("COMMENT_FAILED")}: ${(e as Error).message}`, {
-            rawMessage: (e as Error).message,
+        : new TwikooError("UNKNOWN", `${t("COMMENT_FAILED")}: ${getErrorMessage(e)}`, {
+            rawMessage: getErrorMessage(e),
           });
   } finally {
     isSending.value = false;
@@ -825,7 +828,7 @@ async function uploadPhotoToQcloud(
     uploadCompleted(fileIndex, fileName, fileType, tempUrlResult.fileList[0].tempFileURL);
   } catch (e) {
     console.error(e);
-    uploadFailed(fileIndex, fileType, (e as Error).message);
+    uploadFailed(fileIndex, fileType, getErrorMessage(e));
   }
 }
 
@@ -851,6 +854,7 @@ async function uploadPhotoToThirdParty(
       data?: { url?: string };
       code?: number;
       err?: string;
+      message?: string;
     };
     if (result.data) {
       uploadCompleted(fileIndex, fileName, fileType, String(result.data.url));
@@ -858,11 +862,11 @@ async function uploadPhotoToThirdParty(
       uploadFailed(fileIndex, fileType, t("IMAGE_UPLOAD_NSFW"));
     } else {
       console.error(result);
-      uploadFailed(fileIndex, fileType, String(result.err));
+      uploadFailed(fileIndex, fileType, result.message ?? result.err ?? t("IMAGE_UPLOAD_FAILED"));
     }
   } catch (e) {
     console.error(e);
-    uploadFailed(fileIndex, fileType, (e as Error).message);
+    uploadFailed(fileIndex, fileType, getErrorMessage(e));
   }
 }
 

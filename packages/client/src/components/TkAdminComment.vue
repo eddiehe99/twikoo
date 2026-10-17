@@ -63,7 +63,7 @@
         </div>
         <!-- 管理端正文：服务端已消毒，客户端再走一次 sanitizeHtml 双保险 -->
         <!-- eslint-disable-next-line vue/no-v-html -->
-        <div class="tk-content" v-html="comment.comment"></div>
+        <div class="tk-content" @click="onContentClick" v-html="comment.comment"></div>
         <div
           v-if="securityAlert && securityAlert.commentId === comment._id"
           class="tk-admin-warn tk-admin-security-alert"
@@ -138,6 +138,7 @@ import TkIcon from "../components/TkIcon.vue";
 import {
   call,
   convertLink,
+  popupLightbox,
   renderCode,
   renderLinks,
   renderMath,
@@ -145,7 +146,7 @@ import {
   t,
   timeago,
 } from "../utils";
-import { getAppState } from "../utils/api";
+import { getAppState, getResponse, getErrorMessage, TwikooResponseError } from "../utils/api";
 import { getServerConfig } from "../utils/state";
 import { vLoading } from "../utils/directives";
 import type { CommentDto, ServerConfig } from "../types";
@@ -204,37 +205,53 @@ function displayCreated(comment: AdminCommentDto): string {
   return timeago(comment.created);
 }
 
+/** 管理面板正文沿用 LIGHTBOX 配置，支持点击普通图片放大。 */
+function onContentClick(event: MouseEvent): void {
+  if (serverConfig.LIGHTBOX === "true") {
+    popupLightbox(event);
+  }
+}
+
 /** 拉取当前页评论（1.x getComments 对齐） */
 async function getComments(): Promise<void> {
   loading.value = true;
-  const res = await call(getAppState().tcb, "COMMENT_GET_FOR_ADMIN", {
-    per: pageSize.value,
-    page: currentPage.value,
-    keyword: filter.keyword,
-    type: filter.type,
-  });
-  const result = (res.result ?? res) as { code?: number; count?: number; data?: AdminCommentDto[] };
-  if (result && !result.code) {
-    count.value = result.count ?? 0;
-    comments.value = (result.data ?? []).map((comment) => ({
-      ...comment,
-      comment: sanitizeHtml(comment.comment),
-    }));
+  try {
+    const res = await call(getAppState().tcb, "COMMENT_GET_FOR_ADMIN", {
+      per: pageSize.value,
+      page: currentPage.value,
+      keyword: filter.keyword,
+      type: filter.type,
+    });
+    const result = getResponse(res) as { code?: number; count?: number; data?: AdminCommentDto[] };
+    if (result && !result.code) {
+      count.value = result.count ?? 0;
+      comments.value = (result.data ?? []).map((comment) => ({
+        ...comment,
+        comment: sanitizeHtml(comment.comment),
+      }));
+    }
+    setTimeout(() => {
+      applyRendering(commentListRef.value);
+    }, 0);
+  } catch (e) {
+    alert(getErrorMessage(e));
+  } finally {
+    loading.value = false;
   }
-  setTimeout(() => {
-    applyRendering(commentListRef.value);
-  }, 0);
-  loading.value = false;
 }
 
 /** 拉取管理端配置（1.x getConfig 对齐） */
 async function getConfig(): Promise<void> {
-  const res = await call(getAppState().tcb, "GET_CONFIG_FOR_ADMIN");
-  const result = (res.result ?? res) as { code?: number; config?: ServerConfig };
-  if (result && !result.code && result.config) {
-    Object.assign(serverConfig, result.config);
-    serverVersion.value = typeof result.config.VERSION === "string" ? result.config.VERSION : "";
-    checkConfig();
+  try {
+    const res = await call(getAppState().tcb, "GET_CONFIG_FOR_ADMIN");
+    const result = getResponse(res) as { code?: number; config?: ServerConfig };
+    if (result && !result.code && result.config) {
+      Object.assign(serverConfig, result.config);
+      serverVersion.value = typeof result.config.VERSION === "string" ? result.config.VERSION : "";
+      checkConfig();
+    }
+  } catch (e) {
+    alert(getErrorMessage(e));
   }
 }
 
@@ -318,10 +335,7 @@ function handleView(comment: AdminCommentDto): void {
  */
 async function handleDelete(comment: AdminCommentDto): Promise<void> {
   if (!confirm(t("ADMIN_COMMENT_DELETE_CONFIRM"))) return;
-  loading.value = true;
-  await call(getAppState().tcb, "COMMENT_DELETE_FOR_ADMIN", { id: comment._id });
-  await getComments();
-  loading.value = false;
+  await updateComment("COMMENT_DELETE_FOR_ADMIN", { id: comment._id });
 }
 
 /**
@@ -330,7 +344,7 @@ async function handleDelete(comment: AdminCommentDto): Promise<void> {
  * @param isSpam 目标状态
  */
 function handleSpam(comment: AdminCommentDto, isSpam: boolean): void {
-  void setComment(comment, { isSpam });
+  void updateComment("COMMENT_SET_FOR_ADMIN", { id: comment._id, set: { isSpam } });
 }
 
 /**
@@ -339,19 +353,22 @@ function handleSpam(comment: AdminCommentDto, isSpam: boolean): void {
  * @param top 目标状态
  */
 function handleTop(comment: AdminCommentDto, top: boolean): void {
-  void setComment(comment, { top });
+  void updateComment("COMMENT_SET_FOR_ADMIN", { id: comment._id, set: { top } });
 }
 
-/**
- * 调用 COMMENT_SET_FOR_ADMIN 并重载列表（1.x setComment 对齐）。
- * @param comment 评论
- * @param set 要设置的字段
- */
-async function setComment(comment: AdminCommentDto, set: Record<string, unknown>): Promise<void> {
+/** 执行管理操作；通信失败时仍尝试重载，确认服务端是否已提交操作。 */
+async function updateComment(event: string, data: Record<string, unknown>): Promise<void> {
+  if (loading.value) return;
   loading.value = true;
-  await call(getAppState().tcb, "COMMENT_SET_FOR_ADMIN", { id: comment._id, set });
-  await getComments();
-  loading.value = false;
+  try {
+    getResponse(await call(getAppState().tcb, event, data));
+    await getComments();
+  } catch (e) {
+    alert(getErrorMessage(e));
+    if (!(e instanceof TwikooResponseError)) await getComments();
+  } finally {
+    loading.value = false;
+  }
 }
 
 /**
@@ -361,9 +378,17 @@ async function setComment(comment: AdminCommentDto, set: Record<string, unknown>
 function applyRendering(el: HTMLElement | null): void {
   if (!el) return;
   renderLinks(el);
-  renderMath(el, getAppState().options.katex);
-  if (serverConfig.HIGHLIGHT === "true") {
-    renderCode(el, serverConfig.HIGHLIGHT_THEME as string, serverConfig.HIGHLIGHT_PLUGIN as string);
+  // 只处理各条评论的正文容器（.tk-content，v-html 区域）：整张列表交给 KaTeX
+  // 会改写 Vue 管理的 v-for 锚点，列表重渲染时块级 diff 取到脱离 DOM 的锚点而崩溃。
+  for (const content of el.querySelectorAll<HTMLElement>(".tk-content")) {
+    renderMath(content, getAppState().options.katex);
+    if (serverConfig.HIGHLIGHT === "true") {
+      renderCode(
+        content,
+        serverConfig.HIGHLIGHT_THEME as string,
+        serverConfig.HIGHLIGHT_PLUGIN as string,
+      );
+    }
   }
 }
 

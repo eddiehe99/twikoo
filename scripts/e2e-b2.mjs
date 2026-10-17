@@ -8,7 +8,7 @@
  * 错误卡片 / i18n 切换 / 管理员登录与配置读写 / 管理端评论检索。
  *
  * 为什么不用真实浏览器：本仓 CI 不引入浏览器依赖。jsdom 足以覆盖 DOM 渲染、事件冒泡、
- * XHR（同源直连 tkserver）、localStorage 与 UMD 全局挂载；**视觉 / 暗色 / 响应式属人工项**，
+ * fetch（同源直连 tkserver）、localStorage 与 UMD 全局挂载；**视觉 / 暗色 / 响应式属人工项**，
  * 见报告的「交用户清单」。
  *
  * 用法：
@@ -24,6 +24,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { JSDOM } from "jsdom";
+import { installFetch } from "./jsdom-fetch.mjs";
 
 /** 仓库根（本文件位于 `scripts/`） */
 const ROOT = resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
@@ -230,6 +231,10 @@ async function main() {
       },
     );
     const { window } = dom;
+
+    // jsdom 不实现 fetch —— 注入同源桩
+    installFetch(window);
+
     const doc = window.document;
 
     /** 查询单个元素 */
